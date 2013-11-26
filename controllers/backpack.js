@@ -129,7 +129,8 @@ exports.stats = function stats(request, response, next) {
 
 exports.badgeCounts = function badgeCounts(request, response, next) {
   var badgeIds = [];
-  var results = {};
+  var countByBadge = {};
+  var results = [];
 
   Group.findAll(function(err, groups) {
     if (err) {
@@ -152,13 +153,18 @@ exports.badgeCounts = function badgeCounts(request, response, next) {
       }
 
       badges.forEach(function(badge) {
-        if (results[badge.attributes.body.badge._location]) {
-          results[badge.attributes.body.badge._location] += 1;
+        if (countByBadge[badge.attributes.body.badge._location]) {
+          countByBadge[badge.attributes.body.badge._location] += 1;
         }
         else {
-          results[badge.attributes.body.badge._location] = 1;  
+          countByBadge[badge.attributes.body.badge._location] = 1;  
         }
       });
+
+      for (var badgeLocation in countByBadge) {
+        results.push( { badgeUrl: badgeLocation, count: countByBadge[badgeLocation] } );
+      }
+
       return response.send( {badges: results} );
     });
   });
