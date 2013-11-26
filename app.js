@@ -139,6 +139,7 @@ app.post('/backpack/authenticate', backpack.authenticate);
 app.get('/backpack/settings', backpack.settings());
 app.post('/backpack/settings/revoke-origin', backpackConnect.revokeOrigin());
 app.get('/stats', backpack.stats);
+app.get('/badgecounts', backpack.badgeCounts);
 app.get('/backpack/badge/:badgeId', backpack.details);
 app.delete('/backpack/badge/:badgeId', backpack.deleteBadge);
 

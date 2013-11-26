@@ -127,6 +127,44 @@ exports.stats = function stats(request, response, next) {
   });
 }
 
+exports.badgeCounts = function badgeCounts(request, response, next) {
+  var badgeIds = [];
+  var results = {};
+
+  Group.findAll(function(err, groups) {
+    if (err) {
+      return next(err);
+    }
+
+    groups.forEach(function(group) {
+      if (group.attributes.public) {
+        // note that I'm not worrying about duplicate values in this array (i.e. it isn't a set).  I suspect the 
+        // cost of stripping duplicates would outweigh any performance increase from not having duplicate values 
+        // in the mysql query, especially given that duplicates will, in practice, probably not be terribly numerous
+        // (that is, the same badge being in multiple collections of a given user).
+        badgeIds = badgeIds.concat(group.attributes.badges);
+      }
+    });
+    
+    Badge.find({id: badgeIds}, function(err, badges) {
+      if (err) {
+        return next(err);
+      }
+
+      badges.forEach(function(badge) {
+        if (results[badge.attributes.body.badge._location]) {
+          results[badge.attributes.body.badge._location] += 1;
+        }
+        else {
+          results[badge.attributes.body.badge._location] = 1;  
+        }
+      });
+      return response.send( {badges: results} );
+    });
+  });
+}
+
+
 function badgePage (request, response, badges, template) {
   var user = request.user;
   var error = request.flash('error');

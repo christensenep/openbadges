@@ -16,7 +16,7 @@ Base.apply = function apply(Model, table) {
   };
 
   Model.findAll = function findAll(callback) {
-    client.query('SELECT * FROM ' + table, function (err, results) {
+    client.query('SELECT * FROM `' + table +'`', function (err, results) {
       if (err) callback(err);
       else callback(null, results.map(Model.fromDbResult));
     });
@@ -27,7 +27,14 @@ Base.apply = function apply(Model, table) {
     var keys = Object.keys(criteria);
     var firstKey = keys[0];
     var values = keys.map(function (key) { return criteria[key] });
-    var qstring = 'SELECT * FROM `' + table + '` WHERE ' + keys.map(function (key) { return (key + ' = ?')}).join(' AND ');
+    var qstring = 'SELECT * FROM `' + table + '` WHERE ' + keys.map(function (key) { 
+      if (criteria[key] instanceof Array) {
+        return (key + ' IN (?)');
+      }
+      else {
+        return (key + ' = ?')
+      }
+    }).join(' AND ');
 
     function parseResults(err, results) {
       if (err) callback(err);
