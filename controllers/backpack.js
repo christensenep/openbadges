@@ -179,8 +179,6 @@ function generateBadgeCounts(callback) {
 
 function getCachedCounts(callback) {
   fs.readFile(BADGECOUNT_CACHE, function(err, data) {
-    var results;
-
     if (err) {
       return generateBadgeCounts(callback);
     }
