@@ -5,6 +5,7 @@ const fs = require('fs');
 const async = require('async');
 const url = require('url');
 const bakery = require('openbadges-bakery');
+const path = require('path');
 
 const logger = require('../lib/logger');
 const configuration = require('../lib/configuration');
@@ -127,29 +128,31 @@ exports.stats = function stats(request, response, next) {
   });
 }
 
-exports.badgeCounts = function badgeCounts(request, response, next) {
+const BADGECOUNT_CACHE = path.join(configuration.get('var_path'), 'badgecounts');
+
+function generateBadgeCounts(callback) {
   var badgeIds = [];
   var countByBadge = {};
   var results = [];
 
   Group.findAll(function(err, groups) {
     if (err) {
-      return next(err);
+      callback(err);
     }
 
     groups.forEach(function(group) {
       if (group.attributes.public) {
-        // note that I'm not worrying about duplicate values in this array (i.e. it isn't a set).  I suspect the 
-        // cost of stripping duplicates would outweigh any performance increase from not having duplicate values 
+        // note that I'm not worrying about duplicate values in this array (i.e. it isn't a set).  I suspect the
+        // cost of stripping duplicates would outweigh any performance increase from not having duplicate values
         // in the mysql query, especially given that duplicates will, in practice, probably not be terribly numerous
         // (that is, the same badge being in multiple collections of a given user).
         badgeIds = badgeIds.concat(group.attributes.badges);
       }
     });
-    
+
     Badge.find({id: badgeIds}, function(err, badges) {
       if (err) {
-        return next(err);
+        callback(err);
       }
 
       badges.forEach(function(badge) {
@@ -157,7 +160,7 @@ exports.badgeCounts = function badgeCounts(request, response, next) {
           countByBadge[badge.attributes.body.badge._location] += 1;
         }
         else {
-          countByBadge[badge.attributes.body.badge._location] = 1;  
+          countByBadge[badge.attributes.body.badge._location] = 1;
         }
       });
 
@@ -165,8 +168,40 @@ exports.badgeCounts = function badgeCounts(request, response, next) {
         results.push( { badgeUrl: badgeLocation, count: countByBadge[badgeLocation] } );
       }
 
-      return response.send( {badges: results} );
+      var fileData = { timestamp: Date.now(), results: results };
+
+      fs.writeFile(BADGECOUNT_CACHE, JSON.stringify(fileData), function(err) {
+        callback(err, results);
+      });
     });
+  });
+}
+
+function getCachedCounts(callback) {
+  fs.readFile(BADGECOUNT_CACHE, function(err, data) {
+    var results;
+
+    if (err) {
+      return generateBadgeCounts(callback);
+    }
+    else {
+      var cachedData = JSON.parse(data);
+      if (cachedData.timestamp < Date.now() - (configuration.get('badgecount_cache_seconds') || 60) * 1000) {
+        return generateBadgeCounts(callback);
+      }
+
+      return callback(null, cachedData.results);
+    }
+  });
+}
+
+exports.badgeCounts = function badgeCounts(request, response, next) {
+  getCachedCounts(function (err, results) {
+    if (err) {
+      return next(err);
+    }
+
+    return response.send( {badges: results} );
   });
 }
 
