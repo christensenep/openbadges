@@ -5,7 +5,7 @@ const fs = require('fs');
 const async = require('async');
 const url = require('url');
 const bakery = require('openbadges-bakery');
-const path = require('path');
+const memcached = require('../lib/memcached');
 
 const logger = require('../lib/logger');
 const configuration = require('../lib/configuration');
@@ -128,26 +128,20 @@ exports.stats = function stats(request, response, next) {
   });
 }
 
-const BADGECOUNT_CACHE = path.join(configuration.get('var_path'), 'badgecounts');
+const BADGECOUNT_CACHE_LIFETIME = configuration.get('badgecount_cache_seconds');
 
 function generateBadgeCounts(callback) {
   var badgeIds = [];
   var countByBadge = {};
   var results = [];
 
-  Group.findAll(function(err, groups) {
+  Group.find({public: true}, function(err, groups) {
     if (err) {
       callback(err);
     }
 
     groups.forEach(function(group) {
-      if (group.attributes.public) {
-        // note that I'm not worrying about duplicate values in this array (i.e. it isn't a set).  I suspect the
-        // cost of stripping duplicates would outweigh any performance increase from not having duplicate values
-        // in the mysql query, especially given that duplicates will, in practice, probably not be terribly numerous
-        // (that is, the same badge being in multiple collections of a given user).
-        badgeIds = badgeIds.concat(group.attributes.badges);
-      }
+      badgeIds = badgeIds.concat(group.attributes.badges);
     });
 
     Badge.find({id: badgeIds}, function(err, badges) {
@@ -168,38 +162,34 @@ function generateBadgeCounts(callback) {
         results.push( { badgeUrl: badgeLocation, count: countByBadge[badgeLocation] } );
       }
 
-      var fileData = { timestamp: Date.now(), results: results };
-
-      fs.writeFile(BADGECOUNT_CACHE, JSON.stringify(fileData), function(err) {
-        callback(err, results);
-      });
+      callback(null, results);
     });
   });
 }
 
-function getCachedCounts(callback) {
-  fs.readFile(BADGECOUNT_CACHE, function(err, data) {
-    if (err) {
-      return generateBadgeCounts(callback);
-    }
-    else {
-      var cachedData = JSON.parse(data);
-      if (cachedData.timestamp < Date.now() - (configuration.get('badgecount_cache_seconds') || 60) * 1000) {
-        return generateBadgeCounts(callback);
+exports.badgeCounts = function badgeCounts(request, response, next) {
+  memcached.get('badgecounts', function(err, data) {
+      if (err) {
+        logger.error('Error getting badgecounts from the memcached server: ' + err.message);
       }
 
-      return callback(null, cachedData.results);
-    }
-  });
-}
+      if (!data) {
+        generateBadgeCounts(function(err, data) {
+          if (err) {
+            return next(err);
+          }
 
-exports.badgeCounts = function badgeCounts(request, response, next) {
-  getCachedCounts(function (err, results) {
-    if (err) {
-      return next(err);
-    }
-
-    return response.send( {badges: results} );
+          memcached.set('badgecounts', data, BADGECOUNT_CACHE_LIFETIME, function(err) {
+            if (err) {
+              logger.error('Error setting badgecounts on the memcached server: ' + err.message);
+            }
+          });
+          return response.send( { badges: data } );
+        });
+      }
+      else {
+        return response.send( { badges: data } );
+      }
   });
 }
 
