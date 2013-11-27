@@ -128,8 +128,6 @@ exports.stats = function stats(request, response, next) {
   });
 }
 
-const BADGECOUNT_CACHE_LIFETIME = configuration.get('badgecount_cache_seconds');
-
 function generateBadgeCounts(callback) {
   var badgeIds = [];
   var countByBadge = {};
@@ -179,7 +177,7 @@ exports.badgeCounts = function badgeCounts(request, response, next) {
             return next(err);
           }
 
-          memcached.set('badgecounts', data, BADGECOUNT_CACHE_LIFETIME, function(err) {
+          memcached.set('badgecounts', data, configuration.get('badgecount_cache_seconds'), function(err) {
             if (err) {
               logger.error('Error setting badgecounts on the memcached server: ' + err.message);
             }
@@ -192,7 +190,6 @@ exports.badgeCounts = function badgeCounts(request, response, next) {
       }
   });
 }
-
 
 function badgePage (request, response, badges, template) {
   var user = request.user;
